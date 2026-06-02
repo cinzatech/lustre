@@ -7,7 +7,7 @@ LDFLAGS := -s -w -X main.Version=$(VERSION)
 GOBIN := $(shell go env GOPATH)/bin
 
 .PHONY: build install uninstall clean
-.PHONY: lint fmt check
+.PHONY: lint fmt check test
 
 fmt:
 	gofmt -w src/
@@ -18,7 +18,10 @@ lint:
 	cd src && $(GOBIN)/staticcheck ./...
 	npx @biomejs/biome check src/template.html src/static/
 
-check: fmt lint
+test:
+	cd src && go test -v ./...
+
+check: fmt lint test
 
 build:
 	cd src && go build -ldflags "$(LDFLAGS)" -o ../$(BINARY) .

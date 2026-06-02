@@ -39,9 +39,10 @@ Common targets:
 
 ```
 make build    # compile the binary to ./lustre
+make test     # run the test suite
 make fmt      # auto-format Go and frontend sources
 make lint     # run go vet, staticcheck, and biome check
-make check    # fmt + lint
+make check    # fmt + lint + test
 make install  # build and install to $PREFIX/bin (default /usr/local/bin)
 make clean    # remove the built binary
 ```
