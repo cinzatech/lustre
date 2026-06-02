@@ -11,7 +11,14 @@ import (
 	"syscall"
 )
 
+var Version = "dev"
+
 func main() {
+	if len(os.Args) >= 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("lustre %s\n", Version)
+		os.Exit(0)
+	}
+
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Usage: lustre <branch> [base-branch]\n")
 		fmt.Fprintf(os.Stderr, "\n  Compare <branch> against [base-branch] (default: main)\n")
