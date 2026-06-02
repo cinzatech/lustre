@@ -18,10 +18,10 @@ var staticFS embed.FS
 
 // DiffsResponse is the JSON payload for /api/diffs.
 type DiffsResponse struct {
-	Base   string     `json:"base"`
-	Head   string     `json:"head"`
-	Files  []FileDiff `json:"files"`
-	Error  string     `json:"error,omitempty"`
+	Base  string     `json:"base"`
+	Head  string     `json:"head"`
+	Files []FileDiff `json:"files"`
+	Error string     `json:"error,omitempty"`
 }
 
 func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error {
