@@ -17,13 +17,33 @@ Built for small teams that want a lightweight review flow without overhead.
 ```
 git clone <your-repo-url> lustre
 cd lustre
-go build -o lustre .
+make build
 ```
 
 Move the binary somewhere on your `PATH`:
 
 ```
 mv lustre ~/.local/bin/       # or /usr/local/bin/, or wherever you prefer
+```
+
+## Development
+
+Building and linting require the following tools:
+
+- **make**: used to drive all build and lint tasks.
+- **Go 1.22+**: [go.dev/dl](https://go.dev/dl/)
+- **staticcheck**: install with `go install honnef.co/go/tools/cmd/staticcheck@latest`. Used by `make lint` for static analysis.
+- **Biome**: installed on demand via `npx @biomejs/biome`. Used by `make fmt` and `make lint` to format and check HTML, CSS, and JS files.
+
+Common targets:
+
+```
+make build    # compile the binary to ./lustre
+make fmt      # auto-format Go and frontend sources
+make lint     # run go vet, staticcheck, and biome check
+make check    # fmt + lint
+make install  # build and install to $PREFIX/bin (default /usr/local/bin)
+make clean    # remove the built binary
 ```
 
 ## Usage

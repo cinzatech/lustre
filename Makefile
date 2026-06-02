@@ -10,18 +10,18 @@ GOBIN := $(shell go env GOPATH)/bin
 .PHONY: lint fmt check
 
 fmt:
-	gofmt -w .
-	npx @biomejs/biome format --write template.html static/
+	gofmt -w src/
+	npx @biomejs/biome format --write src/template.html src/static/
 
 lint:
-	go vet ./...
-	$(GOBIN)/staticcheck ./...
-	npx @biomejs/biome check template.html static/
+	cd src && go vet ./...
+	cd src && $(GOBIN)/staticcheck ./...
+	npx @biomejs/biome check src/template.html src/static/
 
 check: fmt lint
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+	cd src && go build -ldflags "$(LDFLAGS)" -o ../$(BINARY) .
 
 install: build
 	install -d $(DESTDIR)$(BINDIR)
