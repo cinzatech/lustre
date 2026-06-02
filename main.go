@@ -90,7 +90,12 @@ func main() {
 }
 
 func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:5522")
+	if err == nil {
+		defer l.Close()
+		return 5522, err
+	}
+	l, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, err
 	}
