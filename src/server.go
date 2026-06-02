@@ -85,6 +85,40 @@ func StartServer(ctx context.Context, ln net.Listener, repoDir, base, head strin
 		json.NewEncoder(w).Encode(resp)
 	})
 
+	// Blob endpoint — serves raw file content for binary previews.
+	// Usage: /api/blob?side=old&path=assets/logo.png
+	mux.HandleFunc("/api/blob", func(w http.ResponseWriter, r *http.Request) {
+		side := r.URL.Query().Get("side")
+		filePath := r.URL.Query().Get("path")
+		if filePath == "" || (side != "old" && side != "new") {
+			http.Error(w, "missing side or path", 400)
+			return
+		}
+
+		var data []byte
+		var err error
+		if side == "old" {
+			data, err = RawFileAtRef(repoDir, base, filePath)
+		} else if head == "" {
+			data, err = RawFileInWorkTree(repoDir, filePath)
+		} else {
+			data, err = RawFileAtRef(repoDir, head, filePath)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if data == nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		ct := detectMimeType(filePath, data)
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(data)
+	})
+
 	// SSE endpoint for live reload
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
@@ -108,6 +142,8 @@ func StartServer(ctx context.Context, ln net.Listener, repoDir, base, head strin
 		for {
 			select {
 			case <-reqCtx.Done():
+				return
+			case <-ctx.Done():
 				return
 			case <-ch:
 				fmt.Fprintf(w, "event: reload\ndata: changed\n\n")

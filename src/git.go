@@ -44,29 +44,42 @@ func ChangedFiles(repoDir, base, head string) ([]string, error) {
 	return strings.Split(raw, "\n"), nil
 }
 
-// FileAtRef returns the contents of a file at a given git ref.
-// Returns empty string and no error if the file doesn't exist at that ref (new file).
-func FileAtRef(repoDir, ref, path string) (string, error) {
+// RawFileAtRef returns the raw bytes of a file at a given git ref.
+// Returns nil and no error if the file doesn't exist at that ref (new file).
+func RawFileAtRef(repoDir, ref, path string) ([]byte, error) {
 	cmd := exec.Command("git", "show", ref+":"+path)
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {
-		// File doesn't exist at this ref — that's fine (added/deleted file)
-		return "", nil
+		return nil, nil
 	}
-	return string(out), nil
+	return out, nil
 }
 
-// FileInWorkTree returns the contents of a file in the working tree.
-// Returns empty string and no error if the file does not exist (deleted file).
-func FileInWorkTree(repoDir, path string) (string, error) {
+// FileAtRef returns the contents of a file at a given git ref as a string.
+// Returns empty string and no error if the file doesn't exist at that ref.
+func FileAtRef(repoDir, ref, path string) (string, error) {
+	data, err := RawFileAtRef(repoDir, ref, path)
+	return string(data), err
+}
+
+// RawFileInWorkTree returns the raw bytes of a file in the working tree.
+// Returns nil and no error if the file does not exist (deleted file).
+func RawFileInWorkTree(repoDir, path string) ([]byte, error) {
 	full := filepath.Join(repoDir, path)
 	data, err := os.ReadFile(full)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			return nil, nil
 		}
-		return "", fmt.Errorf("reading %s: %w", path, err)
+		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
-	return string(data), nil
+	return data, nil
+}
+
+// FileInWorkTree returns the contents of a file in the working tree as a string.
+// Returns empty string and no error if the file does not exist.
+func FileInWorkTree(repoDir, path string) (string, error) {
+	data, err := RawFileInWorkTree(repoDir, path)
+	return string(data), err
 }

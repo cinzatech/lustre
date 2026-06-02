@@ -287,3 +287,118 @@ func TestServer_ShutdownOnContextCancel(t *testing.T) {
 		t.Fatal("StartServer did not return after context cancellation")
 	}
 }
+
+func TestServer_BlobEndpointServesBinaryContent(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+
+	binContent := []byte("\x89PNG\r\n\x1a\n\x00fakepng")
+	commitBinaryFile(t, repoDir, "logo.png", binContent, "add logo")
+
+	b := NewBroadcaster()
+	base := startTestServer(t, repoDir, "main", "main", b)
+
+	resp, err := http.Get(base + "/api/blob?side=new&path=logo.png")
+	if err != nil {
+		t.Fatalf("GET /api/blob: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "image/png") {
+		t.Errorf("Content-Type = %q, want image/png", ct)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != len(binContent) {
+		t.Errorf("body length = %d, want %d", len(body), len(binContent))
+	}
+}
+
+func TestServer_BlobEndpointReturns404ForMissingFile(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+	b := NewBroadcaster()
+	base := startTestServer(t, repoDir, "main", "main", b)
+
+	resp, err := http.Get(base + "/api/blob?side=new&path=nope.png")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 404 {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestServer_BlobEndpointReturns400ForBadParams(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+	b := NewBroadcaster()
+	base := startTestServer(t, repoDir, "main", "main", b)
+
+	resp, err := http.Get(base + "/api/blob?side=bad&path=x")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 400 {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestServer_ShutdownIsNotBlockedBySSEClients(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+	b := NewBroadcaster()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- StartServer(ctx, ln, repoDir, "main", "main", b)
+	}()
+
+	// Wait for server to be ready.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			c.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Open an SSE connection that stays open.
+	sseResp, err := http.Get(fmt.Sprintf("http://%s/events", addr))
+	if err != nil {
+		t.Fatalf("GET /events: %v", err)
+	}
+	defer sseResp.Body.Close()
+
+	// Cancel the server context (simulates Ctrl+C).
+	cancel()
+
+	// The server should shut down promptly, not block for the full
+	// shutdown timeout waiting on the SSE connection.
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed && err.Error() != "context deadline exceeded" {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("StartServer did not return within 2s — SSE connection is blocking shutdown")
+	}
+}

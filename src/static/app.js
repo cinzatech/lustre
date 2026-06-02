@@ -41,7 +41,74 @@ function renderLineContent(fullLine, changes, side) {
 	return html;
 }
 
+function isRenderable(mime) {
+	return (
+		mime.startsWith("image/") ||
+		mime.startsWith("audio/") ||
+		mime.startsWith("video/") ||
+		mime === "application/pdf"
+	);
+}
+
+function blobURL(side, path) {
+	return `/api/blob?side=${encodeURIComponent(side)}&path=${encodeURIComponent(path)}`;
+}
+
+function previewTag(mime, src) {
+	if (mime.startsWith("image/")) return `<img src="${src}" alt="preview">`;
+	if (mime.startsWith("audio/")) return `<audio controls src="${src}"></audio>`;
+	if (mime.startsWith("video/")) return `<video controls src="${src}"></video>`;
+	if (mime === "application/pdf") return `<iframe src="${src}"></iframe>`;
+	return "";
+}
+
+function renderBinaryFile(file) {
+	const mime = file.mime_type || "application/octet-stream";
+	const renderable = isRenderable(mime);
+
+	let html;
+	if (!renderable) {
+		html =
+			`<div class="binary-placeholder">` +
+			`<div class="binary-icon">⬡</div>` +
+			`<div class="binary-label">Binary file</div>` +
+			`<div class="binary-meta">${esc(mime)}</div>` +
+			`</div>`;
+	} else if (file.status === "added") {
+		html =
+			`<div class="binary-preview binary-preview-single">` +
+			`<div class="binary-side added">` +
+			`<div class="binary-side-label">Added</div>` +
+			previewTag(mime, blobURL("new", file.path)) +
+			`</div></div>`;
+	} else if (file.status === "removed") {
+		html =
+			`<div class="binary-preview binary-preview-single">` +
+			`<div class="binary-side removed">` +
+			`<div class="binary-side-label">Removed</div>` +
+			previewTag(mime, blobURL("old", file.path)) +
+			`</div></div>`;
+	} else {
+		html =
+			`<div class="binary-preview">` +
+			`<div class="binary-side removed">` +
+			`<div class="binary-side-label">Before</div>` +
+			previewTag(mime, blobURL("old", file.path)) +
+			`</div>` +
+			`<div class="binary-divider"></div>` +
+			`<div class="binary-side added">` +
+			`<div class="binary-side-label">After</div>` +
+			previewTag(mime, blobURL("new", file.path)) +
+			`</div></div>`;
+	}
+
+	return { html, added: 0, removed: 0, binary: true };
+}
+
 function renderFile(file) {
+	if (file.binary) {
+		return renderBinaryFile(file);
+	}
 	const diff = file.diff;
 	if (!diff || diff === null || !diff.aligned_lines) {
 		// Added or removed file without structural diff — show raw
@@ -208,12 +275,25 @@ function renderAll(data) {
 			file.status === "added" ? "A" : file.status === "removed" ? "D" : "M";
 		const statusCls =
 			file.status === "added" ? "a" : file.status === "removed" ? "r" : "c";
+
+		const sidebarStats = result.binary
+			? `<span class="bin">bin</span>`
+			: `<span class="a">+${result.added}</span> <span class="r">-${result.removed}</span>`;
 		filesHTML +=
 			`<div class="sb-file" data-idx="${i}">` +
 			`<span class="icon ${statusCls}">${statusIcon}</span>` +
 			`<span class="name">${esc(file.path)}</span>` +
-			`<span class="stats"><span class="a">+${result.added}</span> <span class="r">-${result.removed}</span></span>` +
+			`<span class="stats">${sidebarStats}</span>` +
 			`</div>`;
+
+		const headerStat = result.binary
+			? `<span class="bin-badge">binary</span>`
+			: `<span class="stat"><span class="add">+${result.added}</span>&ensp;<span class="rem">−${result.removed}</span></span>`;
+		const cardBody = result.binary
+			? `<div class="diff-container">${result.html}</div>`
+			: `<div class="diff-container"><table class="diff"><colgroup>` +
+				`<col class="gutter"><col class="code"><col style="width:1px"><col class="gutter"><col class="code">` +
+				`</colgroup><tbody>${result.html}</tbody></table></div>`;
 
 		// diff card
 		diffsHTML +=
@@ -221,11 +301,9 @@ function renderAll(data) {
 			`<div class="diff-header">` +
 			`<span class="filepath">${esc(file.path)}</span>` +
 			(lang ? `<span class="lang-badge">${esc(lang)}</span>` : "") +
-			`<span class="stat"><span class="add">+${result.added}</span>&ensp;<span class="rem">−${result.removed}</span></span>` +
+			headerStat +
 			`</div>` +
-			`<div class="diff-container"><table class="diff"><colgroup>` +
-			`<col class="gutter"><col class="code"><col style="width:1px"><col class="gutter"><col class="code">` +
-			`</colgroup><tbody>${result.html}</tbody></table></div>` +
+			cardBody +
 			`</div>`;
 	}
 

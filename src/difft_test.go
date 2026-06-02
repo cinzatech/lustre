@@ -185,3 +185,64 @@ func TestComputeDiffs_MultipleFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestComputeDiffs_DetectsBinaryFile(t *testing.T) {
+	requireGit(t)
+	requireDifft(t)
+
+	repoDir := initTestRepo(t)
+
+	cmd := exec.Command("git", "checkout", "-b", "feat")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+
+	// Write a file containing null bytes (binary).
+	binContent := []byte("PNG\x00\x01\x02\x03binary data")
+	commitBinaryFile(t, repoDir, "image.png", binContent, "add binary")
+
+	diffs, err := ComputeDiffs(repoDir, "main", "feat")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(diffs) != 1 {
+		t.Fatalf("got %d diffs, want 1", len(diffs))
+	}
+	if !diffs[0].Binary {
+		t.Error("expected Binary=true for file with null bytes")
+	}
+	if diffs[0].MimeType == "" {
+		t.Error("expected MimeType to be set for binary file")
+	}
+	if diffs[0].OldSrc != "" || diffs[0].NewSrc != "" {
+		t.Error("expected empty OldSrc/NewSrc for binary file")
+	}
+}
+
+func TestComputeDiffs_TextFileIsNotBinary(t *testing.T) {
+	requireGit(t)
+	requireDifft(t)
+
+	repoDir := initTestRepo(t)
+
+	cmd := exec.Command("git", "checkout", "-b", "feat")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+	commitFile(t, repoDir, "readme.md", "# Hello\n", "add text file")
+
+	diffs, err := ComputeDiffs(repoDir, "main", "feat")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(diffs) != 1 {
+		t.Fatalf("got %d diffs, want 1", len(diffs))
+	}
+	if diffs[0].Binary {
+		t.Error("expected Binary=false for text file")
+	}
+}

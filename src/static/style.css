@@ -495,3 +495,110 @@ td.code.empty-cell {
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--text-3);
 }
+
+/* --- binary files --- */
+.binary-placeholder {
+	padding: 48px 20px;
+	text-align: center;
+	color: var(--text-3);
+}
+
+.binary-icon {
+	font-size: 32px;
+	margin-bottom: 10px;
+	opacity: 0.5;
+}
+
+.binary-label {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-2);
+	margin-bottom: 4px;
+}
+
+.binary-meta {
+	font-family: var(--mono);
+	font-size: 12px;
+}
+
+.binary-preview {
+	display: flex;
+	align-items: flex-start;
+	gap: 0;
+}
+
+.binary-preview-single {
+	justify-content: center;
+}
+
+.binary-side {
+	flex: 1;
+	min-width: 0;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+}
+
+.binary-side.removed {
+	background: var(--bg-removed);
+}
+
+.binary-side.added {
+	background: var(--bg-added);
+}
+
+.binary-side-label {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-3);
+}
+
+.binary-divider {
+	width: 1px;
+	align-self: stretch;
+	background: var(--border);
+}
+
+.binary-preview img {
+	max-width: 100%;
+	max-height: 400px;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+}
+
+.binary-preview audio {
+	width: 100%;
+	max-width: 320px;
+}
+
+.binary-preview video {
+	max-width: 100%;
+	max-height: 400px;
+	border-radius: 4px;
+}
+
+.binary-preview iframe {
+	width: 100%;
+	height: 400px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+}
+
+.bin-badge {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: 11px;
+	padding: 2px 8px;
+	border-radius: 3px;
+	background: var(--input-bg);
+	color: var(--text-2);
+	font-weight: 600;
+}
+
+.sb-file .stats .bin {
+	color: var(--text-3);
+}

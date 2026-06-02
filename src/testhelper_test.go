@@ -81,3 +81,26 @@ func requireDifft(t *testing.T) {
 		t.Fatal("difft not found in PATH")
 	}
 }
+
+// commitBinaryFile writes raw bytes, stages, and commits in the given repo.
+func commitBinaryFile(t *testing.T, repoDir, path string, content []byte, msg string) {
+	t.Helper()
+	full := filepath.Join(repoDir, path)
+	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("add", path)
+	git("commit", "-m", msg)
+}
