@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"strings"
@@ -11,6 +12,9 @@ import (
 
 //go:embed template.html
 var templateFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
 
 // DiffsResponse is the JSON payload for /api/diffs.
 type DiffsResponse struct {
@@ -22,6 +26,13 @@ type DiffsResponse struct {
 
 func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error {
 	mux := http.NewServeMux()
+
+	// Serve static assets (CSS, JS)
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return fmt.Errorf("static embed: %w", err)
+	}
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
 
 	// Serve the HTML template
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -35,10 +46,13 @@ func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error
 			return
 		}
 
-		// Inject branch names into the template
-		html := string(data)
-		html = strings.Replace(html, "{{.Base}}", base, 1)
-		html = strings.Replace(html, "{{.Head}}", head, 1)
+		// Inject branch names and version into the template
+		replacer := strings.NewReplacer(
+			"{{.Base}}", base,
+			"{{.Head}}", head,
+			"{{.Version}}", Version,
+		)
+		html := replacer.Replace(string(data))
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(html))
