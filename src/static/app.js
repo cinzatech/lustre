@@ -285,9 +285,24 @@ async function fetchDiffs() {
 }
 
 /* ─── SSE ─── */
+let currentSource = null;
+let reconnectTimer = null;
+
 function connectSSE() {
 	const indicator = document.getElementById("sb-indicator");
+
+	// Clean up any previous connection.
+	if (currentSource) {
+		currentSource.close();
+		currentSource = null;
+	}
+	if (reconnectTimer !== null) {
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	}
+
 	const evtSource = new EventSource("/events");
+	currentSource = evtSource;
 
 	evtSource.addEventListener("connected", () => {
 		indicator.classList.add("live");
@@ -299,9 +314,11 @@ function connectSSE() {
 
 	evtSource.onerror = () => {
 		indicator.classList.remove("live");
-		// reconnect after a delay
-		setTimeout(() => {
-			evtSource.close();
+		evtSource.close();
+		currentSource = null;
+		// Reconnect after a delay; the guard above prevents stacking.
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
 			connectSSE();
 		}, 2000);
 	};

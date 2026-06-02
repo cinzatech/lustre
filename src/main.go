@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -51,56 +52,49 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Find a free port
-	port, err := freePort()
+	// Bind a listener. Try port 5522 first for a stable URL across restarts,
+	// then fall back to an OS-assigned port.
+	ln, err := listenPreferred()
 	if err != nil {
 		log.Fatalf("no free port: %v", err)
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	url := fmt.Sprintf("http://%s", addr)
+	url := fmt.Sprintf("http://%s", ln.Addr())
 
 	// Start filesystem watcher
 	broadcast := NewBroadcaster()
-	WatchRepo(repoDir, broadcast)
+	watcher, err := WatchRepo(repoDir, broadcast)
+	if err != nil {
+		log.Fatalf("watcher: %v", err)
+	}
+
+	// Shut down cleanly on SIGINT / SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Open browser
-	go func() {
-		openBrowser(url)
-	}()
+	go openBrowser(url)
 
 	fmt.Printf("\n  ✦ lustre\n")
 	fmt.Printf("  %s → %s\n", base, head)
 	fmt.Printf("  %s\n\n", url)
 	fmt.Printf("  Watching for changes. Ctrl+C to stop.\n\n")
 
-	// Handle shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigCh
-		fmt.Printf("\n  Stopped.\n")
-		os.Exit(0)
-	}()
-
-	// Start server (blocks)
-	if err := StartServer(addr, repoDir, base, head, broadcast); err != nil {
+	// Start server (blocks until context is cancelled)
+	if err := StartServer(ctx, ln, repoDir, base, head, broadcast); err != nil {
 		log.Fatal(err)
 	}
+
+	watcher.Close()
+	fmt.Printf("\n  Stopped.\n")
 }
 
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:5522")
-	if err == nil {
-		defer l.Close()
-		return 5522, err
+// listenPreferred tries port 5522 for a stable URL across restarts, then
+// falls back to an OS-assigned port.
+func listenPreferred() (net.Listener, error) {
+	if ln, err := net.Listen("tcp", "127.0.0.1:5522"); err == nil {
+		return ln, nil
 	}
-	l, err = net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return net.Listen("tcp", "127.0.0.1:0")
 }
 
 func openBrowser(url string) {
@@ -115,5 +109,8 @@ func openBrowser(url string) {
 	default:
 		return
 	}
-	_ = cmd.Start()
+	if err := cmd.Start(); err == nil {
+		// Reap the child process so it doesn't become a zombie.
+		go cmd.Wait()
+	}
 }

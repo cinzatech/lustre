@@ -174,15 +174,25 @@ func TestFileInWorkTree_ReturnsEmptyForMissingFile(t *testing.T) {
 	}
 }
 
-func TestCurrentBranch(t *testing.T) {
+func TestFileInWorkTree_ErrorOnUnreadableFile(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permission checks don't apply when running as root")
+	}
 	requireGit(t)
 	repoDir := initTestRepo(t)
 
-	got, err := CurrentBranch(repoDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	path := filepath.Join(repoDir, "secret.txt")
+	if err := os.WriteFile(path, []byte("data\n"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if got != "main" {
-		t.Errorf("CurrentBranch = %q, want %q", got, "main")
+	// Remove read permission.
+	if err := os.Chmod(path, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(path, 0644) })
+
+	_, err := FileInWorkTree(repoDir, "secret.txt")
+	if err == nil {
+		t.Error("expected error for unreadable file, got nil")
 	}
 }

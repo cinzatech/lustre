@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -117,11 +118,19 @@ func diffOneFile(repoDir, base, head, path string) (FileDiff, error) {
 		return FileDiff{}, err
 	}
 
-	// Run difftastic
+	// Run difftastic. Exit code 1 means "files differ" which is expected.
+	// Other non-zero codes indicate real failures.
 	cmd := exec.Command("difft", "--display", "json", oldPath, newPath)
 	cmd.Env = append(os.Environ(), "DFT_UNSTABLE=yes")
-	out, _ := cmd.Output()
-	// difft returns exit code 1 for "files differ" which is fine
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			// exit code 1 = files differ, that's fine
+		} else {
+			return FileDiff{}, fmt.Errorf("difft %s: %w", path, err)
+		}
+	}
 
 	// Parse just enough to get language, or use raw output
 	var parsed struct {

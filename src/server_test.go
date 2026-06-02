@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,19 +14,21 @@ import (
 )
 
 // startTestServer launches the real HTTP server on a free port and returns
-// its base URL. The server runs in the background until the test ends.
+// its base URL. The server shuts down automatically when the test ends.
 func startTestServer(t *testing.T, repoDir, base, head string, b *Broadcaster) string {
 	t.Helper()
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	addr := l.Addr().String()
-	l.Close()
+	addr := ln.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	go func() {
-		_ = StartServer(addr, repoDir, base, head, b)
+		_ = StartServer(ctx, ln, repoDir, base, head, b)
 	}()
 
 	// Wait until the server is accepting connections.
@@ -218,5 +221,69 @@ func TestServer_EventsStreamSendsConnectedAndReload(t *testing.T) {
 	}
 	if !gotReload {
 		t.Fatal("did not receive 'reload' SSE event after Notify")
+	}
+}
+
+func TestServer_BranchNamesAreHTMLEscaped(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+	b := NewBroadcaster()
+	malicious := `<script>alert("xss")</script>`
+	base := startTestServer(t, repoDir, malicious, "main", b)
+
+	resp, err := http.Get(base + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+
+	if strings.Contains(html, "<script>") {
+		t.Error("branch name was injected as raw HTML; expected it to be escaped")
+	}
+	if !strings.Contains(html, "&lt;script&gt;") {
+		t.Error("expected HTML-escaped branch name in output")
+	}
+}
+
+func TestServer_ShutdownOnContextCancel(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+	b := NewBroadcaster()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- StartServer(ctx, ln, repoDir, "main", "main", b)
+	}()
+
+	// Wait for it to be serving.
+	addr := ln.Addr().String()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			c.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			t.Fatalf("StartServer returned unexpected error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StartServer did not return after context cancellation")
 	}
 }

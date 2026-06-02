@@ -94,3 +94,18 @@ func TestBroadcaster_SubscribeAfterNotifyGetsNothing(t *testing.T) {
 		// ok
 	}
 }
+
+func TestWatchRepo_ReturnsCloseableWatcher(t *testing.T) {
+	requireGit(t)
+	repoDir := initTestRepo(t)
+	b := NewBroadcaster()
+
+	w, err := WatchRepo(repoDir, b)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Closing should not panic or error.
+	if err := w.Close(); err != nil {
+		t.Errorf("Close returned error: %v", err)
+	}
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -50,11 +51,12 @@ func (b *Broadcaster) Notify() {
 }
 
 // WatchRepo watches the git working tree for file changes and notifies
-// the broadcaster after a debounce period.
-func WatchRepo(repoDir string, broadcast *Broadcaster) {
+// the broadcaster after a debounce period. Returns the watcher so the
+// caller can close it on shutdown.
+func WatchRepo(repoDir string, broadcast *Broadcaster) (*fsnotify.Watcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatalf("fsnotify: %v", err)
+		return nil, fmt.Errorf("fsnotify: %w", err)
 	}
 
 	// Walk the repo and add directories (fsnotify is not recursive by default)
@@ -84,10 +86,13 @@ func WatchRepo(repoDir string, broadcast *Broadcaster) {
 	})
 
 	if err != nil {
-		log.Printf("warning: walk error: %v", err)
+		watcher.Close()
+		return nil, fmt.Errorf("walk repo: %w", err)
 	}
 
 	go debounceLoop(watcher, broadcast)
+
+	return watcher, nil
 }
 
 func debounceLoop(watcher *fsnotify.Watcher, broadcast *Broadcaster) {

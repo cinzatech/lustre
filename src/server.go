@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
-	"strings"
+	"time"
 )
 
 //go:embed template.html
@@ -24,8 +27,21 @@ type DiffsResponse struct {
 	Error string     `json:"error,omitempty"`
 }
 
-func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error {
+// templateData holds the values injected into the HTML template.
+type templateData struct {
+	Base    string
+	Head    string
+	Version string
+}
+
+func StartServer(ctx context.Context, ln net.Listener, repoDir, base, head string, broadcast *Broadcaster) error {
 	mux := http.NewServeMux()
+
+	// Parse template once at startup; html/template auto-escapes values.
+	tmpl, err := template.ParseFS(templateFS, "template.html")
+	if err != nil {
+		return fmt.Errorf("parse template: %w", err)
+	}
 
 	// Serve static assets (CSS, JS)
 	staticSub, err := fs.Sub(staticFS, "static")
@@ -40,22 +56,13 @@ func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error
 			http.NotFound(w, r)
 			return
 		}
-		data, err := templateFS.ReadFile("template.html")
-		if err != nil {
-			http.Error(w, "template not found", 500)
-			return
-		}
-
-		// Inject branch names and version into the template
-		replacer := strings.NewReplacer(
-			"{{.Base}}", base,
-			"{{.Head}}", head,
-			"{{.Version}}", Version,
-		)
-		html := replacer.Replace(string(data))
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(html))
+		tmpl.Execute(w, templateData{
+			Base:    base,
+			Head:    head,
+			Version: Version,
+		})
 	})
 
 	// Diffs API
@@ -97,10 +104,10 @@ func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error
 		fmt.Fprintf(w, "event: connected\ndata: ok\n\n")
 		flusher.Flush()
 
-		ctx := r.Context()
+		reqCtx := r.Context()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-reqCtx.Done():
 				return
 			case <-ch:
 				fmt.Fprintf(w, "event: reload\ndata: changed\n\n")
@@ -109,6 +116,21 @@ func StartServer(addr, repoDir, base, head string, broadcast *Broadcaster) error
 		}
 	})
 
-	log.Printf("listening on %s", addr)
-	return http.ListenAndServe(addr, mux)
+	srv := &http.Server{Handler: mux}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Serve(ln)
+	}()
+
+	log.Printf("listening on %s", ln.Addr())
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	}
 }

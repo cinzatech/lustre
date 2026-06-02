@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -57,23 +58,15 @@ func FileAtRef(repoDir, ref, path string) (string, error) {
 }
 
 // FileInWorkTree returns the contents of a file in the working tree.
+// Returns empty string and no error if the file does not exist (deleted file).
 func FileInWorkTree(repoDir, path string) (string, error) {
 	full := filepath.Join(repoDir, path)
-	cmd := exec.Command("cat", full)
-	out, err := cmd.Output()
+	data, err := os.ReadFile(full)
 	if err != nil {
-		return "", nil
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("reading %s: %w", path, err)
 	}
-	return string(out), nil
-}
-
-// CurrentBranch returns the current branch name.
-func CurrentBranch(repoDir string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = repoDir
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return string(data), nil
 }
